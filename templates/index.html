@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Shop Analytics</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        
+        /* Custom Utilities */
+        .glass-header {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #f3f4f6;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .input-active {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+            color: white;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        .btn-primary:active { transform: translateY(0); }
+
+        .loader {
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation -->
+    <nav class="glass-header h-16 flex items-center justify-between px-8 z-20">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+                <i class="fa-solid fa-layer-group text-sm"></i>
+            </div>
+            <h1 class="font-bold text-lg tracking-tight text-slate-900">JSP <span class="text-indigo-600">Analytics</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-xs font-medium px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100">
+                <i class="fa-solid fa-robot mr-1"></i> Dual-Solver Engine
+            </span>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Sidebar: Configuration -->
+        <aside class="w-96 bg-white border-r border-slate-200 flex flex-col z-10 shadow-sm overflow-y-auto">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider">Input Data</h2>
+                </div>
+                
+                <!-- Quick Load Buttons -->
+                <div class="flex flex-col gap-2 mb-6">
+                    <div class="flex gap-2">
+                        <button onclick="loadDemo()" class="flex-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded hover:bg-slate-100 transition">
+                            PDF Demo (3x3)
+                        </button>
+                        <button onclick="loadComplexDemo()" class="flex-1 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-2 rounded hover:bg-indigo-100 transition shadow-sm">
+                            FT06 (6x6)
+                        </button>
+                    </div>
+                    <button onclick="generate20x20()" class="w-full text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 px-3 py-2 rounded hover:bg-rose-100 transition shadow-sm border-dashed border-2">
+                        Generate 20x20 (Hard)
+                    </button>
+                </div>
+
+                <!-- Job List -->
+                <div id="jobs-container" class="space-y-3 mb-6">
+                    <!-- Dynamic Inputs injected via JS -->
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-3 mb-8">
+                    <button onclick="addJobRow()" class="py-2 px-4 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Add Job
+                    </button>
+                    <button onclick="clearJobs()" class="py-2 px-4 rounded-lg border border-red-100 text-red-500 bg-red-50 text-sm font-medium hover:bg-red-100 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-trash"></i> Clear
+                    </button>
+                </div>
+
+                <!-- Calculate Box -->
+                <div class="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-2">Algorithm Comparison</h3>
+                    <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+                        Simultaneously runs the <strong>Exact (CP)</strong> method and the <strong>Genetic Algorithm</strong> to compare efficiency (Time vs Cmax).
+                    </p>
+                    <button onclick="runComparison()" id="solve-btn" class="btn-primary w-full py-3 rounded-lg font-semibold text-sm shadow-md flex justify-center items-center gap-2">
+                        <span>Run Optimization</span>
+                        <i class="fa-solid fa-bolt"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mt-auto p-4 text-center border-t border-slate-100">
+                <p class="text-[10px] text-slate-400">Powered by Google OR-Tools & Custom GA</p>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 bg-slate-50/50 p-8 overflow-y-auto relative">
+            
+            <!-- Welcome/Empty State -->
+            <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-center p-8 transition-opacity duration-300">
+                <div class="w-20 h-20 bg-white rounded-2xl shadow-xl flex items-center justify-center mb-6 text-indigo-600 text-3xl">
+                    <i class="fa-solid fa-chart-simple"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">Ready to Optimize</h2>
+                <p class="text-slate-500 max-w-md">Enter your job shop data on the left panel or load an example, then click "Run Optimization" to see the comparative analysis.</p>
+            </div>
+
+            <!-- Results Section (Hidden initially) -->
+            <div id="results-area" class="hidden space-y-6 max-w-6xl mx-auto animate-fade-in-up">
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Exact Card -->
+                    <div class="card p-5 border-l-4 border-indigo-500 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-indigo-600 text-6xl">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase mb-1">Exact Method (CP)</h4>
+                        <div class="flex items-baseline gap-2 mb-2">
+                            <span class="text-3xl font-bold text-slate-800" id="exact-cmax">-</span>
+                            <span class="text-xs font-medium text-slate-500">Makespan</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="px-2 py-1 bg-green-100 text-green-700 rounded font-medium" id="exact-status">Optimal</span>
+                            <span class="font-mono text-slate-500" id="exact-time">0.02s</span>
+                        </div>
+                    </div>
+
+                    <!-- Meta Card -->
+                    <div class="card p-5 border-l-4 border-purple-500 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-purple-600 text-6xl">
+                            <i class="fa-solid fa-dna"></i>
+                        </div>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase mb-1">Genetic Algorithm</h4>
+                        <div class="flex items-baseline gap-2 mb-2">
+                            <span class="text-3xl font-bold text-slate-800" id="meta-cmax">-</span>
+                            <span class="text-xs font-medium text-slate-500">Makespan</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium" id="meta-status">Best Found</span>
+                            <span class="font-mono text-slate-500" id="meta-time">0.15s</span>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Card -->
+                    <div class="card p-5 border-l-4 border-amber-500 flex flex-col justify-center bg-white">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase mb-1">Gap Analysis</h4>
+                        <div class="flex items-center gap-3">
+                            <div class="text-3xl font-bold text-slate-800" id="gap-val">0%</div>
+                            <div id="gap-text" class="text-xs font-medium text-slate-500 leading-tight">
+                                Difference from optimal
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gantt Chart Container -->
+                <div class="card p-1">
+                    <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-lg">
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-gantt text-indigo-500"></i> Production Schedule
+                        </h3>
+                        
+                        <!-- Toggle -->
+                        <div class="flex bg-slate-100 rounded-lg p-1 text-xs font-medium">
+                            <button onclick="switchView('exact')" id="btn-view-exact" class="px-3 py-1.5 rounded-md bg-white text-indigo-600 shadow-sm transition">
+                                Exact Solution
+                            </button>
+                            <button onclick="switchView('meta')" id="btn-view-meta" class="px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-700 transition">
+                                Heuristic
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-white rounded-b-lg">
+                        <div id="gantt-chart" class="w-full h-[450px]"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentResults = {};
+
+        // --- UI UTILS ---
+        function addJobRow(value = "") {
+            const container = document.getElementById('jobs-container');
+            const idx = container.children.length + 1;
+            const div = document.createElement('div');
+            div.className = "flex items-center group relative";
+            div.innerHTML = `
+                <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-0 bg-indigo-500 group-focus-within:h-full transition-all duration-300"></div>
+                <div class="w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus-within:bg-white focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all flex flex-col">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">Job ${idx}</label>
+                    <input type="text" class="job-input w-full bg-transparent border-none outline-none text-sm font-mono text-slate-700 placeholder-slate-300" 
+                    placeholder="e.g. 0,3 1,2 2,4" value="${value}">
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        function clearJobs() {
+            document.getElementById('jobs-container').innerHTML = '';
+            addJobRow();
+        }
+
+        function loadDemo() {
+            document.getElementById('jobs-container').innerHTML = '';
+            addJobRow("0,3 1,2 2,2");
+            addJobRow("1,2 2,1 0,1");
+            addJobRow("2,3 0,1 1,2");
+        }
+
+        function loadComplexDemo() {
+            document.getElementById('jobs-container').innerHTML = '';
+            // FT06 Instance (Fisher and Thompson)
+            addJobRow("2,1 0,3 1,6 3,7 5,3 4,6");
+            addJobRow("1,8 2,5 4,10 5,10 0,10 3,4");
+            addJobRow("2,5 3,4 5,8 0,9 1,1 4,7");
+            addJobRow("1,5 0,5 2,5 3,3 4,8 5,9");
+            addJobRow("2,9 1,3 4,5 5,4 0,3 3,1");
+            addJobRow("1,3 3,3 5,9 0,10 4,4 2,1");
+        }
+
+        function generate20x20() {
+            if(!confirm("Generating a 20x20 instance (400 tasks). This may take 5-10 seconds to compute.")) return;
+            
+            document.getElementById('jobs-container').innerHTML = '';
+            
+            // Randomly generated valid 20x20 instance
+            // 20 Jobs, 20 Machines. Each Job visits every machine exactly once in random order.
+            const numJobs = 20;
+            const numMachines = 20;
+            
+            for(let j=0; j<numJobs; j++) {
+                // Create random permutation of machines 0..19
+                let machines = Array.from({length: numMachines}, (_, i) => i);
+                // Shuffle (Fisher-Yates)
+                for (let i = machines.length - 1; i > 0; i--) {
+                    const k = Math.floor(Math.random() * (i + 1));
+                    [machines[i], machines[k]] = [machines[k], machines[i]];
+                }
+                
+                // Build string "Machine,Duration"
+                let jobStr = "";
+                machines.forEach(m => {
+                    const dur = Math.floor(Math.random() * 99) + 1; // Duration 1-99
+                    jobStr += `${m},${dur} `;
+                });
+                
+                addJobRow(jobStr.trim());
+            }
+        }
+
+        addJobRow();
+
+        // --- LOGIC ---
+        async function runComparison() {
+            const inputs = document.querySelectorAll('.job-input');
+            const jobsData = Array.from(inputs).map(i => i.value).filter(v => v.trim() !== "");
+            
+            if(jobsData.length === 0) return alert("Please add at least one job definition.");
+
+            const btn = document.getElementById('solve-btn');
+            const resultsArea = document.getElementById('results-area');
+            const emptyState = document.getElementById('empty-state');
+            
+            // Loading State
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<div class="loader"></div>';
+            btn.disabled = true;
+            btn.classList.add('opacity-90');
+
+            try {
+                const response = await fetch('/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobs: jobsData, algorithm: 'compare' })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    currentResults = data;
+                    updateDashboard(data);
+                    
+                    // Show UI
+                    emptyState.classList.add('opacity-0', 'pointer-events-none');
+                    setTimeout(() => emptyState.classList.add('hidden'), 300);
+                    
+                    resultsArea.classList.remove('hidden');
+                    
+                    // Default view
+                    switchView('exact');
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Connection error. Server might be busy calculating.");
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                btn.classList.remove('opacity-90');
+            }
+        }
+
+        function updateDashboard(data) {
+            const exact = data.exact;
+            const meta = data.meta;
+
+            // Update Exact Card
+            document.getElementById('exact-cmax').innerText = exact.makespan || "-";
+            document.getElementById('exact-time').innerText = exact.cpu_time + "s";
+            document.getElementById('exact-status').innerText = exact.status;
+
+            // Update Meta Card
+            document.getElementById('meta-cmax').innerText = meta.makespan || "-";
+            document.getElementById('meta-time').innerText = meta.cpu_time + "s";
+            document.getElementById('meta-status').innerText = meta.status;
+
+            // Update Gap
+            if(exact.makespan && meta.makespan) {
+                const gap = ((meta.makespan - exact.makespan) / exact.makespan) * 100;
+                const gapVal = document.getElementById('gap-val');
+                const gapText = document.getElementById('gap-text');
+                
+                gapVal.innerText = `${gap.toFixed(2)}%`;
+                
+                if (gap === 0) {
+                    gapVal.className = "text-3xl font-bold text-green-600";
+                    gapText.innerText = "Heuristic matched optimal result!";
+                } else if (gap < 10) {
+                    gapVal.className = "text-3xl font-bold text-amber-500";
+                    gapText.innerText = "Good heuristic performance";
+                } else {
+                    gapVal.className = "text-3xl font-bold text-red-500";
+                    gapText.innerText = "Heuristic struggled";
+                }
+            }
+        }
+
+        function switchView(type) {
+            const btnExact = document.getElementById('btn-view-exact');
+            const btnMeta = document.getElementById('btn-view-meta');
+
+            // Toggle Classes
+            const activeClasses = ['bg-white', 'text-indigo-600', 'shadow-sm'];
+            const inactiveClasses = ['text-slate-500', 'hover:text-slate-700'];
+
+            if(type === 'exact') {
+                btnExact.classList.add(...activeClasses);
+                btnExact.classList.remove(...inactiveClasses);
+                btnMeta.classList.remove(...activeClasses);
+                btnMeta.classList.add(...inactiveClasses);
+                renderChart(currentResults.exact);
+            } else {
+                btnMeta.classList.add(...activeClasses);
+                btnMeta.classList.remove(...inactiveClasses);
+                btnExact.classList.remove(...activeClasses);
+                btnExact.classList.add(...inactiveClasses);
+                renderChart(currentResults.meta);
+            }
+        }
+
+        function renderChart(data) {
+            if(!data.schedule) return;
+
+            const schedule = data.schedule;
+            // Modern, diverse palette
+            const colors = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6', '#ef4444', '#06b6d4', '#84cc16', '#a855f7'];
+            const jobs = [...new Set(schedule.map(s => s.Job))];
+            
+            const traces = [];
+            
+            jobs.forEach((job, index) => {
+                const jobTasks = schedule.filter(s => s.Job === job);
+                
+                traces.push({
+                    x: jobTasks.map(t => t.Duration),
+                    y: jobTasks.map(t => t.Machine),
+                    base: jobTasks.map(t => t.Start),
+                    name: job,
+                    orientation: 'h',
+                    type: 'bar',
+                    text: jobTasks.map(t => `<b>${t.Job}</b><br>${t.Task} (${t.Duration}s)`),
+                    hoverinfo: 'text',
+                    width: 0.6,
+                    marker: {
+                        color: colors[index % colors.length],
+                        line: { width: 0 } // cleaner look without borders
+                    }
+                });
+            });
+
+            const layout = {
+                barmode: 'stack',
+                yaxis: { 
+                    automargin: true,
+                    categoryorder: 'category ascending',
+                    title: '',
+                    tickfont: { family: 'Inter', size: 13, color: '#64748b' }
+                },
+                xaxis: { 
+                    title: 'Time Scale',
+                    zeroline: true,
+                    zerolinecolor: '#e2e8f0',
+                    showgrid: true,
+                    gridcolor: '#f1f5f9',
+                    tickfont: { family: 'Inter', size: 12, color: '#94a3b8' }
+                },
+                legend: { orientation: 'h', y: -0.15, font: {family: 'Inter', size: 12, color: '#475569'} },
+                margin: { l: 80, r: 20, t: 20, b: 50 },
+                plot_bgcolor: '#fff',
+                paper_bgcolor: '#fff',
+                height: 400
+            };
+
+            Plotly.newPlot('gantt-chart', traces, layout, {responsive: true, displayModeBar: false});
+        }
+    </script>
+</body>
+</html>
